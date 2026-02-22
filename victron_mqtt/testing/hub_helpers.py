@@ -3,12 +3,13 @@
 This module provides utilities for downstream projects that use victron_mqtt
 to write their own tests involving Hub objects and MQTT message simulation.
 """
+from __future__ import annotations
 
 from itertools import count
 import asyncio
 import json
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from unittest.mock import MagicMock, patch
 
 from paho.mqtt.client import ConnectFlags
@@ -66,14 +67,14 @@ async def create_mocked_hub(
         ```
     """
     # Create an async no-op function for patching keepalive loop
-    async def _async_noop(self):
+    async def _async_noop():
         pass
-    
+
     keepalive_patch = patch.object(Hub, "_keepalive_loop", new=_async_noop) if disable_keepalive_loop else None
-    
+
     if keepalive_patch:
         keepalive_patch.start()
-    
+
     try:
         with patch('victron_mqtt.hub.mqtt.Client') as mock_client:
             hub = Hub(
@@ -102,9 +103,8 @@ async def create_mocked_hub(
             setattr(hub, '_process_metric', MagicMock(name="_process_metric"))
 
             # Mock connect_async to trigger the _on_connect callback
-            def mock_connect_async(*args, **kwargs):
-                if hub._client is not None:
-                    hub._on_connect(hub._client, None, ConnectFlags(False), ReasonCode(PacketTypes.CONNACK, identifier=0), None)
+            def mock_connect_async(*args, **kwargs: Any):
+                hub._on_connect(hub._client, None, ConnectFlags(False), ReasonCode(PacketTypes.CONNACK, identifier=0), None)
             mocked_client.connect_async = MagicMock(name="connect_async", side_effect=mock_connect_async)
 
             # Ensure loop_start is a no-op
@@ -114,7 +114,7 @@ async def create_mocked_hub(
             mocked_client.on_message = MagicMock(name="on_message")
 
             # Mock _subscribe to automatically publish a message to TOPIC_INSTALLATION_ID
-            def mock_subscribe(topic):
+            def mock_subscribe(topic: str):
                 if topic == TOPIC_INSTALLATION_ID:
                     mocked_client.on_message(
                         mocked_client,

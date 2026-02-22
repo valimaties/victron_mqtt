@@ -453,7 +453,7 @@ async def test_metric_keepalive_update_frequency_5(mock_time: MagicMock) -> None
 
     mock_time.return_value = 10
 
-    # Inject messages after the event is set
+    # Inject 1st message to generate the metric
     await inject_message(hub, "N/123/grid/30/Ac/L1/Energy/Forward", "{\"value\": 10}", mock_time)
     await finalize_injection(hub, False)
 
@@ -479,9 +479,13 @@ async def test_metric_keepalive_update_frequency_5(mock_time: MagicMock) -> None
     await inject_message(hub, "N/123/grid/30/Ac/L1/Energy/Forward", "{\"value\": 12}", mock_time)
     assert metric.on_update.call_count == 1, "on_update should not be called again as the update frequency did not elapse"
 
-    # Invalidate all metrics, as the silent period is 60 seconds we need to go higher
-    mock_time.return_value = 76
-    hub._keepalive_metrics()
+    # Invalidate all metrics by simulating mqtt disconnect
+    mock_time.return_value = 13
+    hub._on_connect_fail(hub._client, None)
+
+    mock_time.return_value = 140 # We force invalidation after 2 minutes of disconnect
+    hub._on_connect_fail(hub._client, None)
+
     await sleep_short(mock_time)
     assert metric.on_update.call_count == 2, "on_update should be called as metric updated to None"
     magic_mock.assert_called_with(metric, None)
@@ -502,7 +506,7 @@ async def test_metric_keepalive_update_frequency_none(mock_time: MagicMock) -> N
 
     mock_time.return_value = 10
 
-    # Inject messages after the event is set
+    # Inject 1st message to generate the metric
     await inject_message(hub, "N/123/grid/30/Ac/L1/Energy/Forward", "{\"value\": 10}", mock_time)
     await finalize_injection(hub, False)
 
@@ -532,9 +536,13 @@ async def test_metric_keepalive_update_frequency_none(mock_time: MagicMock) -> N
     await inject_message(hub, "N/123/grid/30/Ac/L1/Energy/Forward", "{\"value\": 12}", mock_time)
     assert metric.on_update.call_count == 2, "on_update should not be called again as value didnt changed"
 
-    # Invalidate all metrics, as the silent period is 60 seconds we need to go higher
-    mock_time.return_value = 76
-    hub._keepalive_metrics()
+    # Invalidate all metrics by simulating mqtt disconnect
+    mock_time.return_value = 13
+    hub._on_connect_fail(hub._client, None)
+
+    mock_time.return_value = 140 # We force invalidation after 2 minutes of disconnect
+    hub._on_connect_fail(hub._client, None)
+
     await sleep_short(mock_time)
     assert metric.on_update.call_count == 3, "on_update should be called as metric updated to None"
     magic_mock.assert_called_with(metric, None)
@@ -657,7 +665,7 @@ async def test_new_metric():
     assert mock_on_new_metric.call_count == 5, "on_new_metric should be called exactly 5 times"
 
     # Check that we got the callback only once
-    await hub._keepalive()
+    hub._keepalive()
     # Wait for the callback to be triggered
     await sleep_short()
     assert mock_on_new_metric.call_count == 5, "on_new_metric should be called exactly 5 times"
@@ -690,7 +698,7 @@ async def test_new_metric_duplicate_messages():
     assert mock_on_new_metric.call_count == 1, "on_new_metric should be called exactly 1 time"
 
     # Check that we got the callback only once
-    await hub._keepalive()
+    hub._keepalive()
     # Wait for the callback to be triggered
     await sleep_short()
     assert mock_on_new_metric.call_count == 1, "on_new_metric should be called exactly 1 time"
@@ -726,7 +734,7 @@ async def test_new_metric_duplicate_formula_messages():
     assert mock_on_new_metric.call_count == 3, "on_new_metric should be called exactly 3 times"
 
     # Check that we got the callback only once
-    await hub._keepalive()
+    hub._keepalive()
     # Wait for the callback to be triggered
     await sleep_short()
     assert mock_on_new_metric.call_count == 3, "on_new_metric should be called exactly 3 times"
@@ -736,7 +744,7 @@ async def test_new_metric_duplicate_formula_messages():
     await finalize_injection(hub, disconnect=False)
 
     # Check that we got the callback only once
-    await hub._keepalive()
+    hub._keepalive()
     # Wait for the callback to be triggered
     await sleep_short()
     mock_on_new_metric.assert_any_call(hub, hub.devices["gps_170"], hub.devices["gps_170"].get_metric("gps_latitude"))
@@ -1255,9 +1263,9 @@ async def test_on_connect_fail_before_first_connect():
     hub._first_connect = True  # Mark as first connect
 
     # Simulate connection failures during initial connection
-    # Call on_connect_fail multiple times, reaching the max attempts
+    # Call _on_connect_fail multiple times, reaching the max attempts
     for _ in range(CONNECT_MAX_FAILED_ATTEMPTS):
-        hub.on_connect_fail(mocked_client, None)
+        hub._on_connect_fail(mocked_client, None)
 
     # Verify that _connect_failed_reason was set after max attempts reached
     assert hub._connect_failed_reason is not None, "Connection should have failed after max attempts"
@@ -1298,8 +1306,8 @@ async def test_on_connect_fail_after_first_successful_connect():
 
     # Now simulate multiple connection failures - should NOT raise error even after max attempts
     for attempt in range(CONNECT_MAX_FAILED_ATTEMPTS + 5):
-        hub.on_connect_fail(mocked_client, None)
-        # After successful connect, on_connect_fail should NOT set _connect_failed_reason
+        hub._on_connect_fail(mocked_client, None)
+        # After successful connect, _on_connect_fail should NOT set _connect_failed_reason
         # because it keeps retrying forever
         if attempt < CONNECT_MAX_FAILED_ATTEMPTS:
             assert hub._connect_failed_reason is None, f"Should not fail on attempt {attempt}"
@@ -1307,7 +1315,7 @@ async def test_on_connect_fail_after_first_successful_connect():
     # After max attempts exceeded but after successful connection, should still NOT have failed
     # because the logic allows infinite retries after first successful connection
     assert hub._connect_failed_attempts > CONNECT_MAX_FAILED_ATTEMPTS, "Should have accumulated more failed attempts than max"
-    # Note: on_connect_fail won't raise after max attempts if called before _wait_for_connect completes
+    # Note: _on_connect_fail won't raise after max attempts if called before _wait_for_connect completes
 
 
 @pytest.mark.asyncio
@@ -1338,8 +1346,8 @@ async def test_on_connect_fail_resets_counters_on_successful_reconnect():
     assert hub._connect_failed_attempts == 0
 
     # Simulate some connection failures
-    hub.on_connect_fail(mocked_client, None)
-    hub.on_connect_fail(mocked_client, None)
+    hub._on_connect_fail(mocked_client, None)
+    hub._on_connect_fail(mocked_client, None)
     assert hub._connect_failed_attempts == 2, "Should have 2 failed attempts"
 
     # Reconnect successfully
@@ -1357,38 +1365,23 @@ async def test_on_connect_fail_resets_counters_on_successful_reconnect():
     assert hub._connect_failed_reason is None, "Connect failed reason should be cleared"
 
     # New failures should not immediately fail
-    hub.on_connect_fail(mocked_client, None)
+    hub._on_connect_fail(mocked_client, None)
     assert hub._connect_failed_attempts == 1, "Should restart counting from 1"
 
 
 @pytest.mark.asyncio
-async def test_on_connect_fail_tracking_time_before_first_connect():
-    """Test that on_connect_fail properly tracks disconnection time before first connect."""
-    hub = Hub(
-        host="localhost",
-        port=1883,
-        username=None,
-        password=None,
-        use_ssl=False,
-        installation_id="test123"
-    )
-
-    mocked_client = MagicMock(spec=Client)
-    hub._client = mocked_client
-    hub._loop = asyncio.get_running_loop()
-    hub._first_connect = True
+@patch('victron_mqtt.hub.time.monotonic')
+async def test_on_connect_fail_tracking_time_after_first_connect(mock_time: MagicMock):
+    """Test that _on_connect_fail properly tracks disconnection time before first connect."""
+    # Mock time.monotonic() to return a fixed time
+    mock_time.return_value = 7
+    hub: Hub = await create_mocked_hub()
 
     # First failure - should initialize _connect_failed_since
-    hub.on_connect_fail(mocked_client, None)
-    first_failure_time = hub._connect_failed_since
-    assert first_failure_time > 0, "Should have recorded failure time"
-
+    hub._on_connect_fail(hub._client, None)
+    assert hub._connect_failed_since == 7, "Should have recorded failure time"
+    
     # Second failure - should keep same _connect_failed_since
-    hub.on_connect_fail(mocked_client, None)
-    assert hub._connect_failed_since == first_failure_time, "Should keep same failure time across retries"
-
-    # Continue failures until max attempts
-    for _ in range(CONNECT_MAX_FAILED_ATTEMPTS - 2):
-        hub.on_connect_fail(mocked_client, None)
-
-    assert hub._connect_failed_reason is not None, "Should have failed after max attempts"
+    mock_time.return_value = 10
+    hub._on_connect_fail(hub._client, None)
+    assert hub._connect_failed_since == 7, "Should keep same failure time across retries"

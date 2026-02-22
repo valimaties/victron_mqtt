@@ -122,7 +122,7 @@ class Hub:
             Optional update frequency used by metrics.
             if None = Update only when source data change
             if 0 = Update as new mqtt data received
-            if > 0 = Update at the specified interval (in seconds) even if no new data is received
+            if > 0 = Update no more than specified interval (in seconds)
 
         Behavior
         --------
@@ -290,7 +290,7 @@ class Hub:
         self._client.on_connect = self._on_connect
         self._client.on_disconnect = self._on_disconnect
         self._client.on_message = self._on_message
-        self._client.on_connect_fail = self.on_connect_fail
+        self._client._on_connect_fail = self._on_connect_fail
         #self._client.on_log = self._on_log
         self._connect_failed_attempts = 0
         self._connect_failed_since = 0.0
@@ -400,7 +400,7 @@ class Hub:
         # Remove topic prefix before processing
         topic = self._remove_topic_prefix(topic)
 
-        if "full_publish_completed" in topic:
+        if topic.endswith("full_publish_completed"):
             self._handle_full_publish_message(payload)
             return
 
@@ -601,7 +601,7 @@ class Hub:
         # Give a small delay to allow any pending MQTT messages to be processed
         await asyncio.sleep(0.1)
 
-    async def _keepalive(self) -> None:
+    def _keepalive(self, force: bool = False) -> None:
         """Send a keep alive message to the hub. Updates will only be made to the metrics
         for the 60 seconds following this method call."""
         # Docuementation: https://github.com/victronenergy/dbus-flashmq
@@ -612,7 +612,7 @@ class Hub:
             return
         _LOGGER.debug("Sending keepalive message to topic: %s", keep_alive_topic)
         self._keepalive_counter += 1
-        keepalive_value = Hub.generate_keepalive_options(f"{self._client_id}-{self._keepalive_counter}")
+        keepalive_value = self.generate_keepalive_options(force)
         self._publish(keep_alive_topic, keepalive_value)
 
     def _publish(self, topic: str, value: PayloadType) -> None:
@@ -631,7 +631,7 @@ class Hub:
         count = 0
         while True:
             try:
-                await self._keepalive()
+                self._keepalive()
                 await asyncio.sleep(30)
                 # We should keep alive all metrics every 60 seconds
                 count += 1
@@ -684,7 +684,7 @@ class Hub:
         self._client.on_message = self._on_snapshot_message
         self._subscribe("#")
         _LOGGER.info("Subscribed to all topics for snapshot")
-        await self._keepalive()
+        self._keepalive()
         await self.wait_for_first_refresh()
         _LOGGER.info("Snapshot complete with %d top-level entries", len(self._snapshot))
         return self._snapshot
@@ -820,6 +820,7 @@ class Hub:
         assert self.installation_id is not None
         self._subscribe(f"N/{self.installation_id}/full_publish_completed")
         _LOGGER.info("Subscribed to full_publish_completed notification")
+        self._keepalive(True)
 
     async def _wait_for_connect(self) -> None:
         """Wait for the first connection to complete."""
@@ -884,7 +885,7 @@ class Hub:
         """Return if connected."""
         return self._client.is_connected()
 
-    def on_connect_fail(self, client: MQTTClient, _userdata: Any) -> None:
+    def _on_connect_fail(self, client: MQTTClient, _userdata: Any) -> None:
         """Handle connection failure callback."""
         try:
             _LOGGER.warning("Connection to MQTT broker failed")
@@ -893,16 +894,18 @@ class Hub:
             self._connect_failed_attempts += 1
             # Check if we have reached the maximum number of failed attempts BEFORE the first successful connection
             # After the first successful connection, we keep retrying forever
-            if self._first_connect and self._connect_failed_attempts >= CONNECT_MAX_FAILED_ATTEMPTS:
-                raise CannotConnectError(f"Failed to connect to MQTT broker: {self.host}:{self.port} after {self._connect_failed_attempts} attempts")
-            # This code is not really needed in newer firmwares as metrics will get invalidated individually. With older firmwares, we can force invalidation after we are disconnected for enough time
+            if self._first_connect:
+                if self._connect_failed_attempts >= CONNECT_MAX_FAILED_ATTEMPTS:
+                    raise CannotConnectError(f"Failed to connect to MQTT broker: {self.host}:{self.port} after {self._connect_failed_attempts} attempts")
+                return
+            # This code is needed as metrics will not get invalidated individually when there is mqtt disconnect
             disconnected_for = time.monotonic() - self._connect_failed_since
             if disconnected_for > FORCE_INVALIDATE_AFTER_NOT_CONNECTED_SECONDS:
                 _LOGGER.info("Disconnected for %d seconds. Invalidating all metrics", disconnected_for)
                 self._keepalive_metrics(force_invalidate=True)
                 self._connect_failed_since = 0  # Reset the timer
         except Exception as exc:
-            _LOGGER.exception("on_connect_fail exception %s: %s", type(exc), exc, exc_info=True)
+            _LOGGER.exception("_on_connect_fail exception %s: %s", type(exc), exc, exc_info=True)
             self._connect_failed_reason = exc
             client.disconnect()
             if self._loop.is_running():
@@ -943,15 +946,12 @@ class Hub:
         """Sets the on_new_metric callback."""
         self._on_new_metric = value
 
-    @staticmethod
-    def generate_keepalive_options(echo_value: str) -> str:
-        """Generate a JSON string for keepalive options with a configurable echo value."""
-        options = {
-            "keepalive-options": [
-                {"full-publish-completed-echo": echo_value}
-            ]
-        }
-        return json.dumps(options)
+    def generate_keepalive_options(self, force: bool) -> str:
+        """Generate a string for keepalive options with a configurable echo value."""
+        echo = f"{self._client_id}-{self._keepalive_counter}"
+        if force:
+            return f'{{ "keepalive-options" : [{{"full-publish-completed-echo": "{echo}"}}]}}'
+        return f'{{ "keepalive-options" : [{{"full-publish-completed-echo": "{echo}"}}, "suppress-republish"] }}'
 
     @staticmethod
     def get_keepalive_echo(value: str) -> str | None:

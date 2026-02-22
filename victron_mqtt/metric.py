@@ -193,11 +193,8 @@ class Metric:
 
     def _keepalive(self, force_invalidate: bool, log_debug: Callable[..., None]):
         """Reset metrics value if no updates or send last values if they got skipped"""
-        silence_timeout = max(60, self._hub._update_frequency_seconds * 3) if self._hub._update_frequency_seconds is not None else 60
-        now = time.monotonic()
-        elapsed = now - self._last_seen
-        if (force_invalidate or elapsed > silence_timeout) and self._value is not None:
-            log_debug("Metric %s has been silent for %.2fs, resetting", self.unique_id, elapsed)
+        if force_invalidate and self._value is not None:
+            log_debug("Metric %s is being forced reset", self.unique_id)
             self._handle_message(None, log_debug, update_last_seen=False) #Dont update the last_seen as it wasnt seen
             return
         if self._last_seen > self._last_notified:
@@ -249,7 +246,7 @@ class Metric:
                 # This happens when the last time was before the update frequency passed so now we do really need to notify on it
                 should_notify = True
 
-        if should_notify and  self._hub._loop and callable(self._on_update) and self._hub._loop.is_running():
+        if should_notify and self._hub._loop and callable(self._on_update) and self._hub._loop.is_running():
             self._last_notified = now
             try:
                 # If the event loop is running, schedule the callback
