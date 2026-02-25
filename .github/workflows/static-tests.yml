@@ -15,6 +15,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: write
 
 jobs:
   static_tests:
@@ -29,4 +30,55 @@ jobs:
       - name: Install Hatch
         run: pip install hatch
       - name: Run static tests
-        run: hatch test tests/static_test.py tests/static_hub_test.py tests/parsed_topics_test.py
+        id: tests
+        shell: bash
+        run: |
+          EXIT_CODE=0
+          hatch test tests/static_test.py tests/static_hub_test.py tests/parsed_topics_test.py --tb=no --no-header 2>&1 | tee /tmp/test_output.txt || EXIT_CODE=${PIPESTATUS[0]}
+          OUTPUT=$(cat /tmp/test_output.txt)
+          SUMMARY=$(echo "$OUTPUT" | sed -n '/short test summary info/,$ p')
+          if [ -z "$SUMMARY" ]; then
+            SUMMARY=$(echo "$OUTPUT" | tail -1)
+          fi
+          echo "exit_code=$EXIT_CODE" >> "$GITHUB_OUTPUT"
+          {
+            echo "summary<<EOF"
+            echo "$SUMMARY"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+      - name: Post test summary to PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const exitCode = '${{ steps.tests.outputs.exit_code }}';
+            const summary = `${{ steps.tests.outputs.summary }}`;
+            const icon = exitCode === '0' ? '✅' : '❌';
+            const status = exitCode === '0' ? 'passed' : 'failed';
+            const body = `## ${icon} Static Tests ${status}\n\n\`\`\`\n${summary}\n\`\`\``;
+
+            // Delete previous bot comments for this workflow
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            for (const comment of comments) {
+              if (comment.user.type === 'Bot' && comment.body.includes('Static Tests')) {
+                await github.rest.issues.deleteComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  comment_id: comment.id,
+                });
+              }
+            }
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body,
+            });
+      - name: Fail if tests failed
+        if: steps.tests.outputs.exit_code != '0'
+        run: exit 1
