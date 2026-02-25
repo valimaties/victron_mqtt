@@ -8,7 +8,7 @@ from .hub import Hub, CannotConnectError, ProgrammingError, NotConnectedError, T
 from .metric import Metric
 from .writable_metric import WritableMetric
 from .formula_metric import FormulaMetric
-from ._victron_enums import DeviceType, State, InverterMode, GenericOnOff, ChargerMode, EvChargerMode, EvChargerPosition, EvChargerStatus, GenericAlarmEnum, FluidType, TemperatureType, TemperatureStatus, ESSMode, MppOperationMode, DESSMode, DESSReactiveStrategy, DESSStrategy, DESSErrorCode, DESSRestrictions, VictronDeviceEnum, GeneratorRunningByConditionCode, DigitalInputInputState, DigitalInputType, DigitalInputState, PhoenixInverterMode, ErrorCode, ESSState, ESSModeHub4, AcActiveInputSource, ChargeSchedule, ActiveInputEnum, SolarChargerDeviceOffReason
+from ._victron_enums import DeviceType, State, InverterMode, GenericOnOff, ChargerMode, EvChargerMode, EvChargerPosition, EvChargerStatus, GenericAlarmEnum, FluidType, TemperatureType, TemperatureStatus, ESSMode, MppOperationMode, DESSMode, DESSReactiveStrategy, DESSStrategy, DESSErrorCode, DESSRestrictions, VictronDeviceEnum, GeneratorRunningByConditionCode, DigitalInputInputState, DigitalInputType, DigitalInputState, PhoenixInverterMode, ErrorCode, ESSState, ESSModeHub4, AcActiveInputSource, ChargeSchedule, ActiveInputEnum, SolarChargerDeviceOffReason, BatteryState
 
 __all__ = [
     "Hub",
@@ -59,4 +59,5 @@ __all__ = [
     "ChargeSchedule",
     "ActiveInputEnum",
     "SolarChargerDeviceOffReason",
+    "BatteryState",
 ]
