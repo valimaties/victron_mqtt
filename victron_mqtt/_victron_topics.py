@@ -38,6 +38,7 @@ from ._victron_enums import (
     ESSModeHub4,
     ActiveInputEnum,
     SolarChargerDeviceOffReason,
+    BatteryState
 )
 
 # Good sources for topics is:
@@ -369,6 +370,71 @@ topics: List[TopicDescriptor] = [
         short_id="battery_discharged_energy",
         name="Discharged energy",
         metric_type=MetricType.ENERGY,
+    ),
+    TopicDescriptor(
+        topic="N/{installation_id}/battery/{device_id}/History/TimeSinceLastFullCharge",
+        message_type=MetricKind.SENSOR,
+        short_id="battery_time_since_last_full_charge",
+        name="Time since last full charge",
+        unit_of_measurement="seconds",
+        metric_type=MetricType.NONE,
+        metric_nature=MetricNature.CUMULATIVE,
+        value_type=ValueType.FLOAT,
+    ),
+    TopicDescriptor(
+        topic="N/{installation_id}/battery/{device_id}/History/ChargeCycles",
+        message_type=MetricKind.SENSOR,
+        short_id="battery_total_charge_cycles",
+        name="Total charge cycles",
+        unit_of_measurement="count",
+        metric_type=MetricType.NONE,
+        metric_nature=MetricNature.CUMULATIVE,
+        value_type=ValueType.INT,
+    ),
+    TopicDescriptor(
+        topic="N/{installation_id}/battery/{device_id}/History/MaximumVoltage",
+        message_type=MetricKind.SENSOR,
+        short_id="battery_maximum_voltage",
+        name="Maximum voltage",
+        metric_type=MetricType.VOLTAGE,
+        value_type=ValueType.FLOAT,
+    ),
+    TopicDescriptor(
+        topic="N/{installation_id}/battery/{device_id}/History/MinimumVoltage",
+        message_type=MetricKind.SENSOR,
+        short_id="battery_minimum_voltage",
+        name="Minimum voltage",
+        metric_type=MetricType.VOLTAGE,
+        value_type=ValueType.FLOAT,
+    ),
+    TopicDescriptor(
+        topic="N/{installation_id}/battery/{device_id}/History/AverageDischarge",
+        message_type=MetricKind.SENSOR,
+        short_id="battery_average_discharge",
+        name="Average discharge",
+        metric_type=MetricType.ENERGY,
+    ),
+    TopicDescriptor(
+        topic="N/{installation_id}/battery/{device_id}/History/DeepestDischarge",
+        message_type=MetricKind.SENSOR,
+        short_id="battery_deepest_discharge",
+        name="Deepest discharge",
+        metric_type=MetricType.ENERGY,
+    ),
+    TopicDescriptor(
+        topic="N/{installation_id}/battery/{device_id}/History/LastDischarge",
+        message_type=MetricKind.SENSOR,
+        short_id="battery_last_discharge",
+        name="Last discharge",
+        metric_type=MetricType.ENERGY,
+    ),
+    TopicDescriptor(
+        topic="N/{installation_id}/battery/{device_id}/History/TotalAhDrawn",
+        message_type=MetricKind.SENSOR,
+        short_id="battery_cumulative_ah_drawn",
+        name="Cumulative Ah Drawn",
+        metric_type=MetricType.CURRENT,
+        metric_nature=MetricNature.CUMULATIVE,
     ),
     TopicDescriptor(
         topic="N/{installation_id}/battery/{device_id}/Info/ChargeMode",
@@ -2353,6 +2419,15 @@ topics: List[TopicDescriptor] = [
         short_id="system_dc_battery_voltage",
         name="DC battery voltage",
         metric_type=MetricType.VOLTAGE,
+    ),
+    TopicDescriptor(
+        topic="N/{installation_id}/system/{device_id}/Dc/Battery/State",
+        message_type=MetricKind.SENSOR,
+        short_id="system_dc_battery_state",
+        name="DC battery state",
+        metric_type=MetricType.NONE,
+        value_type=ValueType.ENUM,
+        enum=BatteryState
     ),
     TopicDescriptor(
         topic="N/{installation_id}/system/{device_id}/Dc/Pv/Current",
