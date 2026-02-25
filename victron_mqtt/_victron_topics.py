@@ -2026,7 +2026,7 @@ topics: List[TopicDescriptor] = [
         topic="N/{installation_id}/solarcharger/{device_id}/DeviceOffReason",
         message_type=MetricKind.SENSOR,
         short_id="solarcharger_device_off_reason",
-        name="Solar charger device off-reason",
+        name="Solar charger device-off reason",
         value_type=ValueType.BITMASK,
         enum=SolarChargerDeviceOffReason,
     ),
