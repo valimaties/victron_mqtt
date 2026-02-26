@@ -65,9 +65,6 @@ extra-dependencies = [
   "pytest-print",
 ]
 
-[[tool.hatch.envs.hatch-test.matrix]]
-python = ["3.12"]
-
 [tool.hatch.envs.docs]
 dependencies = [
     "sphinx",
